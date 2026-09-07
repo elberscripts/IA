@@ -1,8 +1,0 @@
-# Saves/binários do usuário ficam fora do git (são dados pessoais).
-# Eles continuam disponíveis na pasta de trabalho para download.
-*.zip
-*.rar
-*.7z
-pendrive/PS3/SAVEDATA/NPEB01378000/
-__pycache__/
-*.pyc
