@@ -1,0 +1,102 @@
+{
+  "format_version": "1.8.0",
+  "animations": {
+    "animation.sombra.move": {
+      "loop": true,
+      "animation_length": 0.5,
+      "bones": {
+        "braco_esq": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              -45
+            ],
+            "0.5": [
+              0,
+              0,
+              45
+            ]
+          }
+        },
+        "braco_dir": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              45
+            ],
+            "0.5": [
+              0,
+              0,
+              -45
+            ]
+          }
+        },
+        "perna_esq": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              45
+            ],
+            "0.5": [
+              0,
+              0,
+              -45
+            ]
+          }
+        },
+        "perna_dir": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              -45
+            ],
+            "0.5": [
+              0,
+              0,
+              45
+            ]
+          }
+        }
+      }
+    },
+    "animation.sombra.idle": {
+      "loop": true,
+      "animation_length": 6.0,
+      "bones": {
+        "cabeca": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "1.5": [
+              0,
+              0,
+              25
+            ],
+            "3.0": [
+              0,
+              0,
+              -25
+            ],
+            "4.5": [
+              0,
+              0,
+              25
+            ],
+            "6.0": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    }
+  }
+}

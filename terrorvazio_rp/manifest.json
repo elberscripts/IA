@@ -1,0 +1,29 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Terror do Vazio [RP]",
+    "description": "Visual da Sombra.",
+    "uuid": "621cac5f-492a-4927-9cab-5895d50ecce8",
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      19,
+      0
+    ]
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "498d0e0b-211a-4fd3-8590-ebffdb2ccd40",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}

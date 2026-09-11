@@ -1,0 +1,18 @@
+{
+  "format_version": "1.16.100",
+  "minecraft:item": {
+    "description": {
+      "identifier": "terror:olho_sombra",
+      "category": "items"
+    },
+    "components": {
+      "minecraft:icon": {
+        "texture": "olho_sombra"
+      },
+      "minecraft:display_name": {
+        "value": "Olho da Sombra"
+      },
+      "minecraft:foil": true
+    }
+  }
+}

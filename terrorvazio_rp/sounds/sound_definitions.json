@@ -1,0 +1,45 @@
+{
+  "format_version": "1.14.0",
+  "sound_definitions": {
+    "sombra.ambiente": {
+      "category": "neutral",
+      "max_distance": 12.0,
+      "sounds": [
+        {
+          "name": "sounds/mob/sombra_sussurro",
+          "weight": 5,
+          "volume": 0.6,
+          "pitch": 1.0
+        },
+        {
+          "name": "sounds/mob/sombra_drone",
+          "weight": 2,
+          "volume": 0.4,
+          "pitch": 1.0
+        }
+      ]
+    },
+    "sombra.grito": {
+      "category": "hostile",
+      "max_distance": 24.0,
+      "sounds": [
+        {
+          "name": "sounds/mob/sombra_grito",
+          "volume": 1.0,
+          "pitch": 1.0
+        }
+      ]
+    },
+    "sombra.morte": {
+      "category": "hostile",
+      "max_distance": 24.0,
+      "sounds": [
+        {
+          "name": "sounds/mob/sombra_morte",
+          "volume": 1.0,
+          "pitch": 1.0
+        }
+      ]
+    }
+  }
+}

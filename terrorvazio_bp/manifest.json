@@ -1,0 +1,39 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Terror do Vazio [BP]",
+    "description": "A Sombra te observa no escuro.",
+    "uuid": "01e6b2ed-e9c0-4fa0-a1ad-16631ac844dd",
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      19,
+      0
+    ]
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "ef90e449-14fc-4687-a505-dd38e12a309f",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "621cac5f-492a-4927-9cab-5895d50ecce8",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ]
+}
