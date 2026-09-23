@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>JoJo Quest — Preview</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; background:#0b0b12; overflow:hidden;
+              font-family:ui-monospace,Menlo,Consolas,monospace; color:#ffe066; }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas { image-rendering:pixelated; image-rendering:crisp-edges; display:block;
+           touch-action:none; background:#000; }
+  #hint { position:fixed; top:10px; right:12px; font-size:12px; opacity:.6;
+          background:#0008; padding:6px 10px; border-radius:8px; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+<div id="hint">setas / WASD ou arraste o D-pad</div>
+<script>
+const TILE = 32, SPRITE = 64;
+const LEGEND = ".,#~TORWSHLD";
+const SOLID = new Set(["T","O","~","R","W","H"]);
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d", { alpha:false });
+ctx.imageSmoothingEnabled = false;
+
+let tiles, hero, dpadImg, map = null, cols = 0, rows = 0;
+let scale = 3, camX = 0, camY = 0;
+const player = { x:0, y:0, dir:0, speed:88, anim:0, moving:false, halfW:8, bodyH:10 };
+const dpad = { cx:0, cy:0, r:0, size:0, x:0, y:0, dx:0, dy:0, id:null };
+const keys = {};
+
+function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+
+async function boot(){
+  [tiles, hero, dpadImg] = await Promise.all([
+    loadImg("assets/tiles.png"), loadImg("assets/hero.png"), loadImg("assets/dpad.png")
+  ]);
+  const txt = await (await fetch("assets/map.txt")).text();
+  map = txt.split("\n").filter(l=>l.length);
+  rows = map.length; cols = map[0].length;
+  player.x = 15*TILE + TILE/2; player.y = 24*TILE + TILE;
+  resize(); requestAnimationFrame(loop);
+}
+
+function resize(){
+  const w = Math.min(window.innerWidth, Math.round(window.innerHeight*20/9));
+  const h = window.innerHeight;
+  canvas.width = w; canvas.height = h;
+  ctx.imageSmoothingEnabled = false;
+  scale = Math.max(2, Math.round(w/(17*TILE)));
+  const size = Math.min(w,h)*0.34, margin = Math.min(w,h)*0.05;
+  dpad.size = size; dpad.x = margin; dpad.y = h - size - margin;
+  dpad.cx = dpad.x + size/2; dpad.cy = dpad.y + size/2; dpad.r = size/2;
+}
+window.addEventListener("resize", resize);
+
+function charAt(tx,ty){
+  if (tx<0||ty<0||tx>=cols||ty>=rows) return "T";
+  return map[ty][tx];
+}
+function solid(tx,ty){ return SOLID.has(charAt(tx,ty)); }
+
+function collides(cx,cy){
+  const l=cx-player.halfW, r=cx+player.halfW-0.01, t=cy-player.bodyH, b=cy-0.01;
+  for(let ty=Math.floor(t/TILE); ty<=Math.floor(b/TILE); ty++)
+    for(let tx=Math.floor(l/TILE); tx<=Math.floor(r/TILE); tx++)
+      if (solid(tx,ty)) return true;
+  return false;
+}
+
+function input(){
+  let dx = dpad.dx, dy = dpad.dy;
+  if (keys.ArrowLeft||keys.KeyA) dx=-1;
+  if (keys.ArrowRight||keys.KeyD) dx=1;
+  if (keys.ArrowUp||keys.KeyW) dy=-1;
+  if (keys.ArrowDown||keys.KeyS) dy=1;
+  return [dx,dy];
+}
+
+function update(dt){
+  let [dx,dy] = input();
+  player.moving = (dx!==0||dy!==0);
+  if (player.moving){
+    player.dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?3:2) : (dy>0?0:1);
+    const len = Math.hypot(dx,dy); if (len>1){ dx/=len; dy/=len; }
+    const step = player.speed*dt;
+    if (!collides(player.x+dx*step, player.y)) player.x += dx*step;
+    if (!collides(player.x, player.y+dy*step)) player.y += dy*step;
+    player.anim += dt;
+  } else player.anim = 0;
+
+  const vw = canvas.width/scale, vh = canvas.height/scale;
+  camX = Math.max(0, Math.min(player.x - vw/2, cols*TILE - vw));
+  camY = Math.max(0, Math.min((player.y - SPRITE/4) - vh/2, rows*TILE - vh));
+}
+
+function render(){
+  const w=canvas.width, h=canvas.height, vw=w/scale, vh=h/scale;
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+  const x0=Math.floor(camX/TILE), y0=Math.floor(camY/TILE);
+  const x1=Math.ceil((camX+vw)/TILE), y1=Math.ceil((camY+vh)/TILE);
+  for(let ty=y0; ty<=y1; ty++) for(let tx=x0; tx<=x1; tx++){
+    const i = Math.max(0, LEGEND.indexOf(charAt(tx,ty)));
+    ctx.drawImage(tiles, i*TILE,0,TILE,TILE,
+      Math.round((tx*TILE-camX)*scale), Math.round((ty*TILE-camY)*scale),
+      TILE*scale, TILE*scale);
+  }
+  const px=(player.x-camX)*scale, py=(player.y-camY)*scale;
+  ctx.fillStyle="rgba(0,0,0,.33)";
+  ctx.beginPath(); ctx.ellipse(px, py-1.5*scale, 10*scale, 3.5*scale, 0,0,6.3); ctx.fill();
+  const col = player.moving ? Math.floor(player.anim/0.14)%4 : 0;
+  const hw = SPRITE*scale;
+  ctx.drawImage(hero, col*SPRITE, player.dir*SPRITE, SPRITE, SPRITE,
+    Math.round(px-hw/2), Math.round(py-hw+2*scale), hw, hw);
+
+  ctx.globalAlpha=.82;
+  ctx.drawImage(dpadImg, dpad.x, dpad.y, dpad.size, dpad.size);
+  ctx.globalAlpha=1;
+  if (dpad.dx||dpad.dy){
+    const arm=dpad.r*0.62, s=dpad.r*0.46;
+    ctx.fillStyle="rgba(255,224,102,.4)";
+    ctx.fillRect(dpad.cx+dpad.dx*arm-s/2, dpad.cy+dpad.dy*arm-s/2, s, s);
+  }
+  const pad=Math.min(w,h)*0.02, fs=Math.min(w,h)*0.035;
+  const txt=`X ${Math.floor(player.x/TILE)}   Y ${Math.floor(player.y/TILE)}`;
+  ctx.font=`bold ${fs}px ui-monospace,monospace`;
+  ctx.fillStyle="rgba(0,0,0,.6)";
+  ctx.fillRect(pad,pad, ctx.measureText(txt).width+pad*2, fs*1.8);
+  ctx.fillStyle="#ffe066"; ctx.fillText(txt, pad*1.5, pad+fs*1.25);
+}
+
+let last=0;
+function loop(t){
+  const dt=Math.min(0.05,(t-last)/1000||0); last=t;
+  update(dt); render(); requestAnimationFrame(loop);
+}
+
+function setDir(x,y){
+  const dx=(x-dpad.cx)/dpad.r, dy=(y-dpad.cy)/dpad.r;
+  if (Math.hypot(dx,dy)<0.28){ dpad.dx=0; dpad.dy=0; return; }
+  let s=Math.round(Math.atan2(dy,dx)/(Math.PI/4)); if(s<0)s+=8;
+  dpad.dx=[1,1,0,-1,-1,-1,0,1][s]; dpad.dy=[0,1,1,1,0,-1,-1,-1][s];
+}
+function inPad(x,y){ const r=dpad.r*1.35;
+  return x>=dpad.cx-r&&x<=dpad.cx+r&&y>=dpad.cy-r&&y<=dpad.cy+r; }
+
+canvas.addEventListener("pointerdown",e=>{
+  const r=canvas.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  if(inPad(x,y)){ dpad.id=e.pointerId; canvas.setPointerCapture(e.pointerId); setDir(x,y); }
+});
+canvas.addEventListener("pointermove",e=>{
+  if(e.pointerId!==dpad.id) return;
+  const r=canvas.getBoundingClientRect(); setDir(e.clientX-r.left, e.clientY-r.top);
+});
+const up=e=>{ if(e.pointerId===dpad.id){ dpad.id=null; dpad.dx=0; dpad.dy=0; } };
+canvas.addEventListener("pointerup",up); canvas.addEventListener("pointercancel",up);
+addEventListener("keydown",e=>{keys[e.code]=true; if(e.code.startsWith("Arrow"))e.preventDefault();});
+addEventListener("keyup",e=>keys[e.code]=false);
+
+boot();
+</script>
+</body>
+</html>

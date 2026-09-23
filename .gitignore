@@ -1,0 +1,21 @@
+# Artefatos intermediários de build (o APK final é versionado)
+build/res/
+build/gen/
+build/classes/
+build/dex/
+build/apk/
+build/*.txt
+
+# Keystores — NUNCA commitar
+keystore/
+*.jks
+*.keystore
+*.p12
+
+# Ferramentas de build baixadas (recriadas por tools/fetch_tools.sh)
+.build-tools/
+
+__pycache__/
+*.pyc
+.DS_Store
+build/*.idsig
