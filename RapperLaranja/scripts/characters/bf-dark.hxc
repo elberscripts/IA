@@ -1,0 +1,13 @@
+import funkin.play.character.MultiSparrowCharacter;
+
+/**
+ * Variante usada por algumas músicas escuras. O script padrão cria uma
+ * segunda cópia do BF; esta versão evita duplicar o Rapper Laranja.
+ */
+class BoyfriendDarkCharacter extends MultiSparrowCharacter
+{
+  function new()
+  {
+    super('bf-dark');
+  }
+}

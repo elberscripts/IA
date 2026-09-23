@@ -1,0 +1,193 @@
+{
+  "version": "1.0.2",
+  "name": "Rapper Laranja",
+  "renderType": "multisparrow",
+  "assetPath": "characters/rapper-laranja",
+  "scale": 1.0,
+  "isPixel": false,
+  "flipX": false,
+  "danceEvery": 1,
+  "singTime": 8.0,
+  "startingAnimation": "idle",
+  "offsets": [0, 0],
+  "cameraOffsets": [0, 0],
+  "healthIcon": {
+    "id": "bf",
+    "scale": 1.0,
+    "flipX": false,
+    "isPixel": false,
+    "offsets": [0, 0]
+  },
+  "death": {
+    "cameraOffsets": [0, 0]
+  },
+  "animations": [
+    {
+      "name": "idle",
+      "prefix": "Rapper idle",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "idle-hold",
+      "prefix": "Rapper idle",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singLEFT",
+      "prefix": "Rapper singLEFT",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singLEFT-hold",
+      "prefix": "Rapper singLEFT",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singDOWN",
+      "prefix": "Rapper singDOWN",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singDOWN-hold",
+      "prefix": "Rapper singDOWN",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singUP",
+      "prefix": "Rapper singUP",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singUP-hold",
+      "prefix": "Rapper singUP",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singRIGHT",
+      "prefix": "Rapper singRIGHT",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singRIGHT-hold",
+      "prefix": "Rapper singRIGHT",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singLEFTmiss",
+      "prefix": "Rapper singLEFTmiss",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singDOWNmiss",
+      "prefix": "Rapper singDOWNmiss",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singUPmiss",
+      "prefix": "Rapper singUPmiss",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singRIGHTmiss",
+      "prefix": "Rapper singRIGHTmiss",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "hey",
+      "prefix": "Rapper hey",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "cheer",
+      "prefix": "Rapper hey",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "scared",
+      "prefix": "Rapper scared",
+      "frameRate": 12,
+      "looped": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "bfCatch",
+      "prefix": "Rapper hey",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singDOWN-censor",
+      "prefix": "Rapper singDOWN",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "singRIGHT-censor",
+      "prefix": "Rapper singRIGHT",
+      "frameRate": 12,
+      "looped": false,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "firstDeath",
+      "assetPath": "shared:characters/BOYFRIEND",
+      "prefix": "BF dies",
+      "frameRate": 24,
+      "looped": false,
+      "flipX": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "deathLoop",
+      "assetPath": "shared:characters/BOYFRIEND",
+      "prefix": "BF Dead Loop",
+      "frameRate": 24,
+      "looped": true,
+      "flipX": true,
+      "offsets": [0, 0]
+    },
+    {
+      "name": "deathConfirm",
+      "assetPath": "shared:characters/BOYFRIEND",
+      "prefix": "BF Dead confirm",
+      "frameRate": 24,
+      "looped": false,
+      "flipX": true,
+      "offsets": [0, 0]
+    }
+  ]
+}

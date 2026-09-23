@@ -1,0 +1,13 @@
+import funkin.play.character.MultiSparrowCharacter;
+
+/**
+ * Mantém o ID "bf" usado pelas músicas originais, mas troca o renderizador
+ * Animate Atlas pelo atlas Sparrow do Rapper Laranja.
+ */
+class BoyfriendCharacter extends MultiSparrowCharacter
+{
+  function new()
+  {
+    super('bf');
+  }
+}
