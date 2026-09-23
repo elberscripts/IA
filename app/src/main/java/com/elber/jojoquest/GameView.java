@@ -15,20 +15,32 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
-/** SurfaceView com game loop proprio: desenha mapa, heroi e HUD. */
-public class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable {
+/** SurfaceView com game loop proprio: tela de titulo, mapa, heroi, moedas e HUD. */
+public class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable,
+        Dex.Listener {
 
     private static final int SPRITE = 64;      // celula na hero.png
     private static final int TILE = GameMap.TILE;
 
+    private static final int STATE_TITLE = 0;
+    private static final int STATE_PLAY = 1;
+
     private Thread thread;
     private volatile boolean running = false;
 
-    private Bitmap tiles, hero, dpadBmp;
+    private Bitmap tiles, hero, dpadBmp, coinSheet, coinHud, titleBg;
     private GameMap map;
     private Player player;
+    private Dex dex;
+    private TitleScreen title;
     private final Dpad dpad = new Dpad();
+
+    private List<Coin> coins = new ArrayList<>();
+    private final List<FloatingText> floaters = new ArrayList<>();
 
     private final Paint paint = new Paint();
     private final Paint hudPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -36,17 +48,19 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private final Rect src = new Rect();
     private final RectF dst = new RectF();
 
-    private float scale = 3f;                  // zoom do mundo (pixel perfect)
+    private int state = STATE_TITLE;
+    private float scale = 3f;
     private float camX = 0f, camY = 0f;
+    private float gameTime = 0f;
+    private float coinPulse = 0f;              // anima o HUD ao ganhar moeda
     private long lastNanos = 0L;
-    private float fps = 0f;
 
     public GameView(Context ctx) {
         super(ctx);
         getHolder().addCallback(this);
         setFocusable(true);
 
-        paint.setFilterBitmap(false);          // nearest neighbour = pixel art nitido
+        paint.setFilterBitmap(false);          // nearest neighbour = pixel art nitida
         paint.setAntiAlias(false);
         paint.setDither(false);
 
@@ -59,13 +73,32 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             tiles = load("tiles.png");
             hero = load("hero.png");
             dpadBmp = load("dpad.png");
+            coinSheet = load("coin.png");
+            coinHud = load("coin_hud.png");
+            titleBg = load("title_bg.png");
             map = new GameMap(ctx.getAssets(), "map.txt");
         } catch (Exception e) {
             throw new RuntimeException("Falha ao carregar assets do jogo", e);
         }
 
-        // spawn no cruzamento de caminhos perto do canto superior esquerdo
+        dex = new Dex(ctx);
+        dex.addListener(this);
+        title = new TitleScreen(titleBg, coinHud);
+        title.setHasSave(dex.totalEarned() > 0);
+
+        resetWorld(false);
+    }
+
+    /** Recria o mundo. Se {@code fresh}, zera o progresso e devolve as moedas. */
+    private void resetWorld(boolean fresh) {
+        if (fresh) {
+            dex.resetAll();
+        }
         player = new Player(15 * TILE + TILE / 2f, 24 * TILE + TILE);
+        coins = Coin.scatter(map, 40, dex);
+        floaters.clear();
+        dex.discover("jotaro");
+        dex.discover("village");
     }
 
     private Bitmap load(String name) throws Exception {
@@ -84,12 +117,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int f, int w, int h) {
-        // escolhe um zoom inteiro que mostre ~17 tiles na horizontal
         int s = Math.max(2, Math.round(w / (17f * TILE)));
         scale = s;
         float size = Math.min(w, h) * 0.34f;
         float margin = Math.min(w, h) * 0.05f;
         dpad.layout(margin, h - size - margin, size);
+        title.layout(w, h);
     }
 
     @Override
@@ -111,13 +144,56 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         }
     }
 
+    /** @return true se o back foi tratado (volta ao titulo). */
+    public boolean onBackPressed() {
+        if (state == STATE_PLAY) {
+            state = STATE_TITLE;
+            title.setHasSave(true);
+            return true;
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------- input
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouchEvent(MotionEvent e) {
-        dpad.onTouch(e);
+        if (state == STATE_TITLE) {
+            handleTitleTouch(e);
+        } else {
+            dpad.onTouch(e);
+        }
         return true;
+    }
+
+    private void handleTitleTouch(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                title.setPressed(title.hitTest(e.getX(), e.getY()));
+                break;
+            case MotionEvent.ACTION_UP: {
+                int b = title.hitTest(e.getX(), e.getY());
+                title.setPressed(TitleScreen.BTN_NONE);
+                if (b == TitleScreen.BTN_START) {
+                    resetWorld(true);
+                    state = STATE_PLAY;
+                } else if (b == TitleScreen.BTN_CONTINUE) {
+                    state = STATE_PLAY;
+                }
+                break;
+            }
+            case MotionEvent.ACTION_CANCEL:
+                title.setPressed(TitleScreen.BTN_NONE);
+                break;
+        }
+    }
+
+    // ----------------------------------------------------------- Dex.Listener
+
+    @Override
+    public void onCoinsChanged(int total, int delta) {
+        if (delta > 0) coinPulse = 1f;
     }
 
     // -------------------------------------------------------------- game loop
@@ -129,8 +205,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             if (lastNanos == 0L) lastNanos = now;
             float dt = (now - lastNanos) / 1_000_000_000f;
             lastNanos = now;
-            if (dt > 0.05f) dt = 0.05f;        // evita saltos apos pausa
-            if (dt > 0f) fps = fps * 0.92f + (1f / dt) * 0.08f;
+            if (dt > 0.05f) dt = 0.05f;
 
             update(dt);
 
@@ -146,8 +221,42 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void update(float dt) {
+        gameTime += dt;
+        if (coinPulse > 0f) coinPulse = Math.max(0f, coinPulse - dt * 2.6f);
+
+        if (state == STATE_TITLE) {
+            title.update(dt);
+            return;
+        }
+
+        // botas velozes compradas no Dex deixam o heroi mais rapido
+        player.speed = dex.isOwned("boots") ? 123f : 88f;
         player.update(dt, dpad.dirX(), dpad.dirY(), map);
+
+        collectCoins();
+
+        for (Iterator<FloatingText> it = floaters.iterator(); it.hasNext(); ) {
+            FloatingText f = it.next();
+            f.update(dt);
+            if (f.dead()) it.remove();
+        }
+
         followCamera();
+    }
+
+    private void collectCoins() {
+        for (Coin c : coins) {
+            if (c.collected) continue;
+            if (c.touches(player.x, player.y)) {
+                c.collected = true;
+                dex.markPicked(c.id);
+                int before = dex.coins();
+                dex.addCoins(1);
+                int gained = dex.coins() - before;
+                dex.discover("coin");
+                floaters.add(new FloatingText("+" + gained, c.x, c.y - 6f));
+            }
+        }
     }
 
     private void followCamera() {
@@ -156,11 +265,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float viewW = w / scale, viewH = h / scale;
         float targetX = player.x - viewW / 2f;
         float targetY = (player.y - SPRITE / 4f) - viewH / 2f;
-
-        float maxX = Math.max(0f, map.pixelWidth() - viewW);
-        float maxY = Math.max(0f, map.pixelHeight() - viewH);
-        camX = clamp(targetX, 0f, maxX);
-        camY = clamp(targetY, 0f, maxY);
+        camX = clamp(targetX, 0f, Math.max(0f, map.pixelWidth() - viewW));
+        camY = clamp(targetY, 0f, Math.max(0f, map.pixelHeight() - viewH));
     }
 
     private static float clamp(float v, float lo, float hi) {
@@ -170,9 +276,14 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     // ----------------------------------------------------------------- render
 
     private void renderFrame(Canvas c) {
-        c.drawColor(Color.BLACK);
-
         int w = getWidth(), h = getHeight();
+
+        if (state == STATE_TITLE) {
+            title.draw(c, w, h, dex);
+            return;
+        }
+
+        c.drawColor(Color.BLACK);
         float viewW = w / scale, viewH = h / scale;
 
         int x0 = (int) Math.floor(camX / TILE);
@@ -192,40 +303,122 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             }
         }
 
-        // --- sombra do heroi
+        drawCoins(c, viewW, viewH);
+
+        // --- sombra + heroi
         float px = (player.x - camX) * scale;
         float py = (player.y - camY) * scale;
         c.drawOval(px - 10f * scale, py - 5f * scale,
                 px + 10f * scale, py + 2f * scale, shadowPaint);
 
-        // --- heroi
-        int row = player.dir;
-        int col = player.frame();
-        src.set(col * SPRITE, row * SPRITE, (col + 1) * SPRITE, (row + 1) * SPRITE);
+        src.set(player.frame() * SPRITE, player.dir * SPRITE,
+                (player.frame() + 1) * SPRITE, (player.dir + 1) * SPRITE);
         float hw = SPRITE * scale;
         dst.set(px - hw / 2f, py - hw + 2f * scale, px + hw / 2f, py + 2f * scale);
         c.drawBitmap(hero, src, dst, paint);
 
+        drawFloaters(c);
         drawHud(c, w, h);
     }
 
+    private void drawCoins(Canvas c, float viewW, float viewH) {
+        float cs = Coin.SIZE;
+        for (Coin coin : coins) {
+            if (coin.collected) continue;
+            // culling: so desenha o que esta na tela
+            if (coin.x < camX - cs || coin.x > camX + viewW + cs) continue;
+            if (coin.y < camY - cs || coin.y > camY + viewH + cs) continue;
+
+            int f = coin.frame(gameTime);
+            src.set(f * Coin.SIZE, 0, (f + 1) * Coin.SIZE, Coin.SIZE);
+
+            float cx = (coin.x - camX) * scale;
+            float cy = (coin.y + coin.bob(gameTime) - camY) * scale;
+            float s = Coin.SIZE * scale * 0.62f;
+
+            // sombrinha no chao
+            shadowPaint.setColor(0x33000000);
+            c.drawOval(cx - s * 0.30f, cy + s * 0.34f,
+                       cx + s * 0.30f, cy + s * 0.50f, shadowPaint);
+            shadowPaint.setColor(0x55000000);
+
+            dst.set(cx - s / 2f, cy - s / 2f, cx + s / 2f, cy + s / 2f);
+            c.drawBitmap(coinSheet, src, dst, paint);
+        }
+    }
+
+    private void drawFloaters(Canvas c) {
+        if (floaters.isEmpty()) return;
+        hudPaint.setTextAlign(Paint.Align.CENTER);
+        float ts = 11f * scale;
+        hudPaint.setTextSize(ts);
+        for (FloatingText f : floaters) {
+            float fx = (f.x - camX) * scale;
+            float fy = (f.y - camY) * scale;
+            int a = f.alpha();
+            hudPaint.setStyle(Paint.Style.STROKE);
+            hudPaint.setStrokeWidth(ts * 0.22f);
+            hudPaint.setColor((a << 24) | 0x00201000);
+            c.drawText(f.text, fx, fy, hudPaint);
+            hudPaint.setStyle(Paint.Style.FILL);
+            hudPaint.setColor((a << 24) | 0x00FFE066);
+            c.drawText(f.text, fx, fy, hudPaint);
+        }
+        hudPaint.setTextAlign(Paint.Align.LEFT);
+    }
+
     private void drawHud(Canvas c, int w, int h) {
+        // --- d-pad
         RectF b = dpad.bounds();
         paint.setAlpha(210);
         c.drawBitmap(dpadBmp, null, b, paint);
         paint.setAlpha(255);
         dpad.drawHighlight(c, hudPaint);
-        hudPaint.setColor(Color.WHITE);
 
-        // painel de coordenadas no canto superior esquerdo
-        float pad = Math.min(w, h) * 0.02f;
-        hudPaint.setTextSize(Math.min(w, h) * 0.035f);
+        float pad = Math.min(w, h) * 0.025f;
+        float ts = Math.min(w, h) * 0.045f;
+        float icon = ts * 1.25f;
+
+        // --- carteira de moedas (canto superior direito)
+        String coinTxt = String.valueOf(dex.coins());
+        hudPaint.setTextSize(ts);
+        float tw = hudPaint.measureText(coinTxt);
+        float boxW = tw + icon + pad * 2.4f;
+        float boxH = icon * 1.5f;
+        float bx = w - pad - boxW;
+
+        hudPaint.setColor(0xAA000000);
+        c.drawRoundRect(bx, pad, bx + boxW, pad + boxH, boxH * 0.3f, boxH * 0.3f, hudPaint);
+        if (coinPulse > 0f) {
+            hudPaint.setColor(((int) (coinPulse * 120) << 24) | 0x00FFE066);
+            c.drawRoundRect(bx, pad, bx + boxW, pad + boxH,
+                    boxH * 0.3f, boxH * 0.3f, hudPaint);
+        }
+
+        float grow = 1f + coinPulse * 0.22f;
+        float ic = icon * grow;
+        dst.set(bx + pad, pad + (boxH - ic) / 2f, bx + pad + ic, pad + (boxH + ic) / 2f);
+        c.drawBitmap(coinHud, null, dst, paint);
+
+        hudPaint.setColor(0xFFFFE066);
+        c.drawText(coinTxt, bx + pad * 1.4f + icon, pad + boxH * 0.68f, hudPaint);
+
+        // --- contador de moedas restantes no mapa
+        int left = 0;
+        for (Coin coin : coins) if (!coin.collected) left++;
+        hudPaint.setTextSize(ts * 0.62f);
+        hudPaint.setColor(0x99FFFFFF);
+        c.drawText(left == 0 ? "TODAS AS MOEDAS!" : left + " no mapa",
+                bx + pad, pad + boxH * 1.55f, hudPaint);
+
+        // --- coordenadas (canto superior esquerdo)
+        hudPaint.setTextSize(ts * 0.72f);
         String txt = "X " + (int) (player.x / TILE) + "   Y " + (int) (player.y / TILE);
-        float tw = hudPaint.measureText(txt);
         float th = hudPaint.getTextSize();
         hudPaint.setColor(0x99000000);
-        c.drawRoundRect(pad, pad, pad * 2 + tw, pad + th * 1.8f, th * 0.3f, th * 0.3f, hudPaint);
-        hudPaint.setColor(0xFFFFE066);
-        c.drawText(txt, pad * 1.5f, pad + th * 1.25f, hudPaint);
+        c.drawRoundRect(pad, pad, pad * 2 + hudPaint.measureText(txt), pad + th * 1.9f,
+                th * 0.3f, th * 0.3f, hudPaint);
+        hudPaint.setColor(0xFFFFFFFF);
+        c.drawText(txt, pad * 1.5f, pad + th * 1.32f, hudPaint);
     }
 }

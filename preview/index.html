@@ -9,156 +9,322 @@
   html,body { height:100%; background:#0b0b12; overflow:hidden;
               font-family:ui-monospace,Menlo,Consolas,monospace; color:#ffe066; }
   #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-  canvas { image-rendering:pixelated; image-rendering:crisp-edges; display:block;
-           touch-action:none; background:#000; }
-  #hint { position:fixed; top:10px; right:12px; font-size:12px; opacity:.6;
-          background:#0008; padding:6px 10px; border-radius:8px; pointer-events:none; }
+  canvas { image-rendering:pixelated; display:block; touch-action:none; background:#000; }
+  #hint { position:fixed; bottom:8px; right:12px; font-size:11px; opacity:.45;
+          background:#0008; padding:5px 9px; border-radius:8px; pointer-events:none; }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="c"></canvas></div>
-<div id="hint">setas / WASD ou arraste o D-pad</div>
+<div id="hint">setas / WASD · ESC volta ao título</div>
 <script>
-const TILE = 32, SPRITE = 64;
-const LEGEND = ".,#~TORWSHLD";
-const SOLID = new Set(["T","O","~","R","W","H"]);
+const TILE=32, SPRITE=64, COIN=32, COIN_FRAMES=6;
+const LEGEND=".,#~TORWSHLD";
+const SOLID=new Set(["T","O","~","R","W","H"]);
+const S_TITLE=0, S_PLAY=1;
 
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d", { alpha:false });
-ctx.imageSmoothingEnabled = false;
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d",{alpha:false});
 
-let tiles, hero, dpadImg, map = null, cols = 0, rows = 0;
-let scale = 3, camX = 0, camY = 0;
-const player = { x:0, y:0, dir:0, speed:88, anim:0, moving:false, halfW:8, bodyH:10 };
-const dpad = { cx:0, cy:0, r:0, size:0, x:0, y:0, dx:0, dy:0, id:null };
-const keys = {};
+let tiles,hero,dpadImg,coinSheet,coinHud,titleBg;
+let map=null,cols=0,rows=0;
+let scale=3,camX=0,camY=0,gameTime=0,coinPulse=0,state=S_TITLE;
+const player={x:0,y:0,dir:0,speed:88,anim:0,moving:false,halfW:8,bodyH:10};
+const dpad={cx:0,cy:0,r:0,size:0,x:0,y:0,dx:0,dy:0,id:null};
+const keys={};
+let coins=[],floaters=[];
 
-function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+// ---------------- Dex (espelha a classe Java) ----------------
+const K="jojoquest_dex.";
+const Dex={
+  catalog:[
+    ["jotaro","Jotaro","O herói. Delinquente de coração mole.",0],
+    ["coin","Moeda de Ouro","Brilha e gira. Vale 1 na carteira.",0],
+    ["village","A Vila","Cinco casas, um lago e muito caminho.",0],
+    ["lake","O Lago","Água fria demais para nadar.",0],
+    ["boots","Botas Velozes","Deixa o Jotaro 40% mais rápido.",25],
+    ["lamp","Lanterna","Ilumina os cantos escuros do mapa.",40],
+    ["charm","Amuleto Dourado","Moedas valem o dobro.",80],
+    ["hat","Boné Extra","Puramente estético. Vale cada moeda.",120],
+  ],
+  g(k,d){ const v=localStorage.getItem(K+k); return v===null?d:JSON.parse(v); },
+  s(k,v){ localStorage.setItem(K+k,JSON.stringify(v)); },
+  coins(){ return this.g("coins",0); },
+  totalEarned(){ return this.g("coins_total",0); },
+  addCoins(n){ if(n<=0)return; if(this.isOwned("charm"))n*=2;
+    this.s("coins",this.coins()+n); this.s("coins_total",this.totalEarned()+n);
+    coinPulse=1; return n; },
+  isOwned(id){ return this.g("owned_"+id,false); },
+  isFound(id){ return this.g("found_"+id,false); },
+  discover(id){ if(this.isFound(id))return false; this.s("found_"+id,true); return true; },
+  foundCount(){ return this.catalog.filter(e=>this.isFound(e[0])).length; },
+  totalCount(){ return this.catalog.length; },
+  markPicked(i){ this.s("picked_"+i,true); },
+  isPicked(i){ return this.g("picked_"+i,false); },
+  resetAll(){ Object.keys(localStorage).filter(k=>k.startsWith(K))
+                .forEach(k=>localStorage.removeItem(k)); },
+};
+
+function loadImg(s){ return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=s;}); }
 
 async function boot(){
-  [tiles, hero, dpadImg] = await Promise.all([
-    loadImg("assets/tiles.png"), loadImg("assets/hero.png"), loadImg("assets/dpad.png")
-  ]);
-  const txt = await (await fetch("assets/map.txt")).text();
-  map = txt.split("\n").filter(l=>l.length);
-  rows = map.length; cols = map[0].length;
-  player.x = 15*TILE + TILE/2; player.y = 24*TILE + TILE;
-  resize(); requestAnimationFrame(loop);
+  [tiles,hero,dpadImg,coinSheet,coinHud,titleBg]=await Promise.all([
+    loadImg("assets/tiles.png"),loadImg("assets/hero.png"),loadImg("assets/dpad.png"),
+    loadImg("assets/coin.png"),loadImg("assets/coin_hud.png"),loadImg("assets/title_bg.png")]);
+  const txt=await (await fetch("assets/map.txt")).text();
+  map=txt.split("\n").filter(l=>l.length); rows=map.length; cols=map[0].length;
+  resetWorld(false); resize(); requestAnimationFrame(loop);
+}
+
+function resetWorld(fresh){
+  if(fresh) Dex.resetAll();
+  player.x=15*TILE+TILE/2; player.y=24*TILE+TILE; player.dir=0; player.anim=0;
+  coins=scatterCoins(40); floaters=[];
+  Dex.discover("jotaro"); Dex.discover("village");
+}
+
+// PRNG determinístico (mesma semente do Java -> mesmas posições)
+function mulberry(a){ return function(){ a|=0;a=a+0x6D2B79F5|0;
+  let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
+  return ((t^t>>>14)>>>0)/4294967296; }; }
+
+function scatterCoins(count){
+  const out=[],rnd=mulberry(20240923); let id=0,guard=0;
+  while(out.length<count && guard++<count*200){
+    const tx=2+Math.floor(rnd()*(cols-4)), ty=2+Math.floor(rnd()*(rows-4));
+    if(solid(tx,ty)) continue;
+    if(solid(tx-1,ty)&&solid(tx+1,ty)) continue;
+    const cx=tx*TILE+TILE/2, cy=ty*TILE+TILE/2;
+    if(out.some(c=>(c.x-cx)**2+(c.y-cy)**2<(TILE*3)**2)) continue;
+    out.push({id,x:cx,y:cy,phase:rnd()*2,collected:Dex.isPicked(id)}); id++;
+  }
+  return out;
 }
 
 function resize(){
-  const w = Math.min(window.innerWidth, Math.round(window.innerHeight*20/9));
-  const h = window.innerHeight;
-  canvas.width = w; canvas.height = h;
-  ctx.imageSmoothingEnabled = false;
-  scale = Math.max(2, Math.round(w/(17*TILE)));
-  const size = Math.min(w,h)*0.34, margin = Math.min(w,h)*0.05;
-  dpad.size = size; dpad.x = margin; dpad.y = h - size - margin;
-  dpad.cx = dpad.x + size/2; dpad.cy = dpad.y + size/2; dpad.r = size/2;
+  const w=Math.min(window.innerWidth,Math.round(window.innerHeight*20/9)), h=window.innerHeight;
+  canvas.width=w; canvas.height=h; ctx.imageSmoothingEnabled=false;
+  scale=Math.max(2,Math.round(w/(17*TILE)));
+  const size=Math.min(w,h)*0.34, margin=Math.min(w,h)*0.05;
+  dpad.size=size; dpad.x=margin; dpad.y=h-size-margin;
+  dpad.cx=dpad.x+size/2; dpad.cy=dpad.y+size/2; dpad.r=size/2;
+  layoutTitle(w,h);
 }
-window.addEventListener("resize", resize);
+addEventListener("resize",resize);
 
-function charAt(tx,ty){
-  if (tx<0||ty<0||tx>=cols||ty>=rows) return "T";
-  return map[ty][tx];
+const btn={start:{},cont:{}};
+function layoutTitle(w,h){
+  const bw=Math.min(w*0.44,420), bh=Math.max(h*0.11,54), cx=w/2, y=h*0.60, gap=bh*0.28;
+  btn.start={x:cx-bw/2,y,w:bw,h:bh};
+  btn.cont ={x:cx-bw/2,y:y+bh+gap,w:bw,h:bh};
 }
+function inBtn(b,x,y){ return x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h; }
+
+function charAt(tx,ty){ if(tx<0||ty<0||tx>=cols||ty>=rows)return "T"; return map[ty][tx]; }
 function solid(tx,ty){ return SOLID.has(charAt(tx,ty)); }
-
 function collides(cx,cy){
-  const l=cx-player.halfW, r=cx+player.halfW-0.01, t=cy-player.bodyH, b=cy-0.01;
-  for(let ty=Math.floor(t/TILE); ty<=Math.floor(b/TILE); ty++)
-    for(let tx=Math.floor(l/TILE); tx<=Math.floor(r/TILE); tx++)
-      if (solid(tx,ty)) return true;
+  const l=cx-player.halfW,r=cx+player.halfW-.01,t=cy-player.bodyH,b=cy-.01;
+  for(let ty=Math.floor(t/TILE);ty<=Math.floor(b/TILE);ty++)
+    for(let tx=Math.floor(l/TILE);tx<=Math.floor(r/TILE);tx++)
+      if(solid(tx,ty))return true;
   return false;
 }
 
-function input(){
-  let dx = dpad.dx, dy = dpad.dy;
-  if (keys.ArrowLeft||keys.KeyA) dx=-1;
-  if (keys.ArrowRight||keys.KeyD) dx=1;
-  if (keys.ArrowUp||keys.KeyW) dy=-1;
-  if (keys.ArrowDown||keys.KeyS) dy=1;
-  return [dx,dy];
-}
-
 function update(dt){
-  let [dx,dy] = input();
-  player.moving = (dx!==0||dy!==0);
-  if (player.moving){
-    player.dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?3:2) : (dy>0?0:1);
-    const len = Math.hypot(dx,dy); if (len>1){ dx/=len; dy/=len; }
-    const step = player.speed*dt;
-    if (!collides(player.x+dx*step, player.y)) player.x += dx*step;
-    if (!collides(player.x, player.y+dy*step)) player.y += dy*step;
-    player.anim += dt;
-  } else player.anim = 0;
+  gameTime+=dt; if(coinPulse>0) coinPulse=Math.max(0,coinPulse-dt*2.6);
+  if(state===S_TITLE) return;
+  player.speed=Dex.isOwned("boots")?123:88;
+  let dx=dpad.dx,dy=dpad.dy;
+  if(keys.ArrowLeft||keys.KeyA)dx=-1; if(keys.ArrowRight||keys.KeyD)dx=1;
+  if(keys.ArrowUp||keys.KeyW)dy=-1;   if(keys.ArrowDown||keys.KeyS)dy=1;
+  player.moving=(dx!==0||dy!==0);
+  if(player.moving){
+    player.dir=Math.abs(dx)>Math.abs(dy)?(dx>0?3:2):(dy>0?0:1);
+    const len=Math.hypot(dx,dy); if(len>1){dx/=len;dy/=len;}
+    const st=player.speed*dt;
+    if(!collides(player.x+dx*st,player.y))player.x+=dx*st;
+    if(!collides(player.x,player.y+dy*st))player.y+=dy*st;
+    player.anim+=dt;
+  } else player.anim=0;
 
-  const vw = canvas.width/scale, vh = canvas.height/scale;
-  camX = Math.max(0, Math.min(player.x - vw/2, cols*TILE - vw));
-  camY = Math.max(0, Math.min((player.y - SPRITE/4) - vh/2, rows*TILE - vh));
+  for(const c of coins){
+    if(c.collected)continue;
+    const ddx=player.x-c.x, ddy=(player.y-8)-c.y;
+    if(ddx*ddx+ddy*ddy<=18*18){
+      c.collected=true; Dex.markPicked(c.id);
+      const got=Dex.addCoins(1); Dex.discover("coin");
+      floaters.push({t:"+"+got,x:c.x,y:c.y-6,age:0});
+    }
+  }
+  floaters=floaters.filter(f=>{f.age+=dt;f.y-=26*dt;return f.age<0.9;});
+
+  const vw=canvas.width/scale, vh=canvas.height/scale;
+  camX=Math.max(0,Math.min(player.x-vw/2,cols*TILE-vw));
+  camY=Math.max(0,Math.min((player.y-SPRITE/4)-vh/2,rows*TILE-vh));
 }
 
 function render(){
-  const w=canvas.width, h=canvas.height, vw=w/scale, vh=h/scale;
+  const w=canvas.width,h=canvas.height;
+  if(state===S_TITLE){ renderTitle(w,h); return; }
+  const vw=w/scale, vh=h/scale;
   ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
-  const x0=Math.floor(camX/TILE), y0=Math.floor(camY/TILE);
-  const x1=Math.ceil((camX+vw)/TILE), y1=Math.ceil((camY+vh)/TILE);
-  for(let ty=y0; ty<=y1; ty++) for(let tx=x0; tx<=x1; tx++){
-    const i = Math.max(0, LEGEND.indexOf(charAt(tx,ty)));
-    ctx.drawImage(tiles, i*TILE,0,TILE,TILE,
-      Math.round((tx*TILE-camX)*scale), Math.round((ty*TILE-camY)*scale),
-      TILE*scale, TILE*scale);
+  const x0=Math.floor(camX/TILE),y0=Math.floor(camY/TILE);
+  const x1=Math.ceil((camX+vw)/TILE),y1=Math.ceil((camY+vh)/TILE);
+  for(let ty=y0;ty<=y1;ty++)for(let tx=x0;tx<=x1;tx++){
+    const i=Math.max(0,LEGEND.indexOf(charAt(tx,ty)));
+    ctx.drawImage(tiles,i*TILE,0,TILE,TILE,
+      Math.round((tx*TILE-camX)*scale),Math.round((ty*TILE-camY)*scale),TILE*scale,TILE*scale);
   }
+  // moedas
+  for(const c of coins){
+    if(c.collected)continue;
+    if(c.x<camX-COIN||c.x>camX+vw+COIN||c.y<camY-COIN||c.y>camY+vh+COIN)continue;
+    const f=Math.floor((gameTime+c.phase)/0.11)%COIN_FRAMES;
+    const bob=Math.sin((gameTime+c.phase)*3)*2;
+    const cx=(c.x-camX)*scale, cy=(c.y+bob-camY)*scale, s=COIN*scale*0.62;
+    ctx.fillStyle="rgba(0,0,0,.2)";
+    ctx.beginPath(); ctx.ellipse(cx,cy+s*0.42,s*0.30,s*0.08,0,0,6.3); ctx.fill();
+    ctx.drawImage(coinSheet,f*COIN,0,COIN,COIN,Math.round(cx-s/2),Math.round(cy-s/2),s,s);
+  }
+  // heroi
   const px=(player.x-camX)*scale, py=(player.y-camY)*scale;
   ctx.fillStyle="rgba(0,0,0,.33)";
-  ctx.beginPath(); ctx.ellipse(px, py-1.5*scale, 10*scale, 3.5*scale, 0,0,6.3); ctx.fill();
-  const col = player.moving ? Math.floor(player.anim/0.14)%4 : 0;
-  const hw = SPRITE*scale;
-  ctx.drawImage(hero, col*SPRITE, player.dir*SPRITE, SPRITE, SPRITE,
-    Math.round(px-hw/2), Math.round(py-hw+2*scale), hw, hw);
-
-  ctx.globalAlpha=.82;
-  ctx.drawImage(dpadImg, dpad.x, dpad.y, dpad.size, dpad.size);
-  ctx.globalAlpha=1;
-  if (dpad.dx||dpad.dy){
-    const arm=dpad.r*0.62, s=dpad.r*0.46;
-    ctx.fillStyle="rgba(255,224,102,.4)";
-    ctx.fillRect(dpad.cx+dpad.dx*arm-s/2, dpad.cy+dpad.dy*arm-s/2, s, s);
+  ctx.beginPath(); ctx.ellipse(px,py-1.5*scale,10*scale,3.5*scale,0,0,6.3); ctx.fill();
+  const col=player.moving?Math.floor(player.anim/0.14)%4:0, hw=SPRITE*scale;
+  ctx.drawImage(hero,col*SPRITE,player.dir*SPRITE,SPRITE,SPRITE,
+    Math.round(px-hw/2),Math.round(py-hw+2*scale),hw,hw);
+  // floaters
+  ctx.textAlign="center"; ctx.font=`bold ${11*scale}px ui-monospace,monospace`;
+  for(const f of floaters){
+    const a=Math.max(0,1-f.age/0.9);
+    ctx.lineWidth=11*scale*0.22; ctx.strokeStyle=`rgba(32,16,0,${a})`;
+    ctx.strokeText(f.t,(f.x-camX)*scale,(f.y-camY)*scale);
+    ctx.fillStyle=`rgba(255,224,102,${a})`;
+    ctx.fillText(f.t,(f.x-camX)*scale,(f.y-camY)*scale);
   }
-  const pad=Math.min(w,h)*0.02, fs=Math.min(w,h)*0.035;
+  ctx.textAlign="left";
+  drawHud(w,h);
+}
+
+function rr(x,y,w,h,r){ ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill(); }
+
+function drawHud(w,h){
+  ctx.globalAlpha=.82; ctx.drawImage(dpadImg,dpad.x,dpad.y,dpad.size,dpad.size); ctx.globalAlpha=1;
+  if(dpad.dx||dpad.dy){ const arm=dpad.r*.62,s=dpad.r*.46;
+    ctx.fillStyle="rgba(255,224,102,.4)";
+    ctx.fillRect(dpad.cx+dpad.dx*arm-s/2,dpad.cy+dpad.dy*arm-s/2,s,s); }
+
+  const pad=Math.min(w,h)*.025, ts=Math.min(w,h)*.045, icon=ts*1.25;
+  const ct=String(Dex.coins());
+  ctx.font=`bold ${ts}px ui-monospace,monospace`;
+  const boxW=ctx.measureText(ct).width+icon+pad*2.4, boxH=icon*1.5, bx=w-pad-boxW;
+  ctx.fillStyle="rgba(0,0,0,.67)"; rr(bx,pad,boxW,boxH,boxH*.3);
+  if(coinPulse>0){ ctx.fillStyle=`rgba(255,224,102,${coinPulse*.47})`; rr(bx,pad,boxW,boxH,boxH*.3); }
+  const ic=icon*(1+coinPulse*.22);
+  ctx.drawImage(coinHud,bx+pad,pad+(boxH-ic)/2,ic,ic);
+  ctx.fillStyle="#ffe066"; ctx.fillText(ct,bx+pad*1.4+icon,pad+boxH*.68);
+
+  const left=coins.filter(c=>!c.collected).length;
+  ctx.font=`bold ${ts*.62}px ui-monospace,monospace`;
+  ctx.fillStyle="rgba(255,255,255,.6)";
+  ctx.fillText(left===0?"TODAS AS MOEDAS!":left+" no mapa",bx+pad,pad+boxH*1.55);
+
+  ctx.font=`bold ${ts*.72}px ui-monospace,monospace`;
   const txt=`X ${Math.floor(player.x/TILE)}   Y ${Math.floor(player.y/TILE)}`;
-  ctx.font=`bold ${fs}px ui-monospace,monospace`;
-  ctx.fillStyle="rgba(0,0,0,.6)";
-  ctx.fillRect(pad,pad, ctx.measureText(txt).width+pad*2, fs*1.8);
-  ctx.fillStyle="#ffe066"; ctx.fillText(txt, pad*1.5, pad+fs*1.25);
+  const th=ts*.72;
+  ctx.fillStyle="rgba(0,0,0,.6)"; rr(pad,pad,ctx.measureText(txt).width+pad*2,th*1.9,th*.3);
+  ctx.fillStyle="#fff"; ctx.fillText(txt,pad*1.5,pad+th*1.32);
+}
+
+let pressedBtn=null;
+function renderTitle(w,h){
+  const s=Math.max(w/titleBg.width,h/titleBg.height);
+  const dw=titleBg.width*s, dh=titleBg.height*s;
+  ctx.fillStyle="#000"; ctx.fillRect(0,0,w,h);
+  ctx.drawImage(titleBg,(w-dw)/2,(h-dh)/2,dw,dh);
+  ctx.fillStyle="rgba(0,0,0,.33)"; ctx.fillRect(0,h*.45,w,h*.55);
+
+  const cx=w/2, size=Math.min(w*.13,h*.20), y=h*.26;
+  const pulse=1+Math.sin(gameTime*2.2)*.02;
+  ctx.textAlign="center"; ctx.font=`bold ${size*pulse}px ui-monospace,monospace`;
+  ctx.lineWidth=size*.18; ctx.strokeStyle="#1a0b28"; ctx.lineJoin="round";
+  ctx.strokeText("JOJO",cx,y); ctx.strokeText("QUEST",cx,y+size*1.05);
+  ctx.fillStyle="#ffe066"; ctx.fillText("JOJO",cx,y);
+  ctx.fillStyle="#ffc93c"; ctx.fillText("QUEST",cx,y+size*1.05);
+  ctx.font=`bold ${size*.22}px ui-monospace,monospace`;
+  ctx.fillStyle="rgba(230,216,255,.8)";
+  ctx.fillText("UMA AVENTURA BIZARRA",cx,y+size*1.55);
+
+  const hasSave=Dex.totalEarned()>0;
+  drawBtn(btn.start,hasSave?"NOVO JOGO":"JOGAR",pressedBtn==="start",true);
+  if(hasSave) drawBtn(btn.cont,"CONTINUAR",pressedBtn==="cont",false);
+
+  const pad=Math.min(w,h)*.035, ts=Math.min(w,h)*.038, icon=ts*1.5;
+  ctx.textAlign="right"; ctx.font=`bold ${ts}px ui-monospace,monospace`;
+  const ct=String(Dex.coins()), bw=ctx.measureText(ct).width+icon+pad*1.8;
+  ctx.fillStyle="rgba(0,0,0,.6)"; rr(w-pad-bw,pad,bw,icon*1.35,icon*.35);
+  ctx.drawImage(coinHud,w-pad-bw+pad*.6,pad+icon*.17,icon,icon);
+  ctx.fillStyle="#ffe066"; ctx.fillText(ct,w-pad*1.7,pad+icon*.95);
+  ctx.textAlign="center"; ctx.font=`bold ${ts*.8}px ui-monospace,monospace`;
+  ctx.fillStyle="rgba(255,255,255,.6)";
+  ctx.fillText(`DEX  ${Dex.foundCount()} / ${Dex.totalCount()}`,w/2,h-pad);
+  ctx.textAlign="left";
+}
+
+function drawBtn(b,label,down,primary){
+  const off=down?b.h*.05:0, rad=b.h*.24;
+  ctx.fillStyle="rgba(0,0,0,.53)"; rr(b.x,b.y+b.h*.09,b.w,b.h,rad);
+  ctx.fillStyle=primary?(down?"#d9a800":"#ffc93c"):(down?"#4a2e73":"#6b3fa0");
+  rr(b.x,b.y+off,b.w,b.h,rad);
+  ctx.strokeStyle=primary?"#7a5a00":"#2b1440"; ctx.lineWidth=Math.max(2,b.h*.06);
+  ctx.beginPath(); ctx.roundRect(b.x,b.y+off,b.w,b.h,rad); ctx.stroke();
+  ctx.textAlign="center"; ctx.font=`bold ${b.h*.40}px ui-monospace,monospace`;
+  ctx.fillStyle=primary?"#241436":"#fff";
+  ctx.fillText(label,b.x+b.w/2,b.y+b.h/2+off+b.h*.14);
 }
 
 let last=0;
-function loop(t){
-  const dt=Math.min(0.05,(t-last)/1000||0); last=t;
-  update(dt); render(); requestAnimationFrame(loop);
-}
+function loop(t){ const dt=Math.min(.05,(t-last)/1000||0); last=t;
+  update(dt); render(); requestAnimationFrame(loop); }
 
 function setDir(x,y){
   const dx=(x-dpad.cx)/dpad.r, dy=(y-dpad.cy)/dpad.r;
-  if (Math.hypot(dx,dy)<0.28){ dpad.dx=0; dpad.dy=0; return; }
+  if(Math.hypot(dx,dy)<.28){dpad.dx=0;dpad.dy=0;return;}
   let s=Math.round(Math.atan2(dy,dx)/(Math.PI/4)); if(s<0)s+=8;
   dpad.dx=[1,1,0,-1,-1,-1,0,1][s]; dpad.dy=[0,1,1,1,0,-1,-1,-1][s];
 }
 function inPad(x,y){ const r=dpad.r*1.35;
   return x>=dpad.cx-r&&x<=dpad.cx+r&&y>=dpad.cy-r&&y<=dpad.cy+r; }
+function pos(e){ const r=canvas.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; }
 
 canvas.addEventListener("pointerdown",e=>{
-  const r=canvas.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  const [x,y]=pos(e);
+  if(state===S_TITLE){
+    pressedBtn=inBtn(btn.start,x,y)?"start":
+      (Dex.totalEarned()>0&&inBtn(btn.cont,x,y))?"cont":null;
+    return;
+  }
   if(inPad(x,y)){ dpad.id=e.pointerId; canvas.setPointerCapture(e.pointerId); setDir(x,y); }
 });
 canvas.addEventListener("pointermove",e=>{
-  if(e.pointerId!==dpad.id) return;
-  const r=canvas.getBoundingClientRect(); setDir(e.clientX-r.left, e.clientY-r.top);
+  if(e.pointerId!==dpad.id)return; const [x,y]=pos(e); setDir(x,y);
 });
-const up=e=>{ if(e.pointerId===dpad.id){ dpad.id=null; dpad.dx=0; dpad.dy=0; } };
-canvas.addEventListener("pointerup",up); canvas.addEventListener("pointercancel",up);
-addEventListener("keydown",e=>{keys[e.code]=true; if(e.code.startsWith("Arrow"))e.preventDefault();});
+canvas.addEventListener("pointerup",e=>{
+  const [x,y]=pos(e);
+  if(state===S_TITLE){
+    if(pressedBtn==="start"&&inBtn(btn.start,x,y)){ resetWorld(true); state=S_PLAY; }
+    else if(pressedBtn==="cont"&&inBtn(btn.cont,x,y)){ state=S_PLAY; }
+    pressedBtn=null; return;
+  }
+  if(e.pointerId===dpad.id){ dpad.id=null; dpad.dx=0; dpad.dy=0; }
+});
+canvas.addEventListener("pointercancel",()=>{ pressedBtn=null; dpad.id=null; dpad.dx=0; dpad.dy=0; });
+addEventListener("keydown",e=>{
+  keys[e.code]=true;
+  if(e.code.startsWith("Arrow"))e.preventDefault();
+  if(e.code==="Escape"&&state===S_PLAY) state=S_TITLE;
+  if((e.code==="Enter"||e.code==="Space")&&state===S_TITLE) state=S_PLAY;
+});
 addEventListener("keyup",e=>keys[e.code]=false);
 
 boot();

@@ -40,6 +40,14 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onBackPressed() {
+        // Do jogo volta para a tela de titulo; do titulo sai do app.
+        if (!gameView.onBackPressed()) {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         gameView.resume();

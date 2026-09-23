@@ -1,7 +1,8 @@
 # JoJo Quest 🎩
 
 Jogo Android 2D top-down em pixel art retrô (estilo Pokémon GBA) com o Jotaro chibi.
-Você anda livremente por um mapa de vila usando um D-pad de setas na tela.
+Você anda livremente por um mapa de vila usando um D-pad de setas na tela,
+coletando moedas de ouro que ficam guardadas no **Dex**.
 
 **APK assinado:** [`build/JoJoQuest-release.apk`](build/JoJoQuest-release.apk)
 
@@ -11,7 +12,7 @@ Você anda livremente por um mapa de vila usando um D-pad de setas na tela.
 | minSdk | **34 (Android 14)** |
 | targetSdk | 34 |
 | Assinatura | APK Signature Scheme **v2 + v3** |
-| Tamanho | ~640 KB |
+| Tamanho | ~731 KB |
 | Orientação | Paisagem |
 
 ---
@@ -38,7 +39,10 @@ adb install -r build/JoJoQuest-release.apk
 - O personagem anima o ciclo de caminhada e vira para a direção do movimento.
 - Árvores, pedras, água, casas e cercas **bloqueiam** a passagem; caminhos, grama, areia e piso de madeira são andáveis.
 - A câmera segue o herói e trava nas bordas do mapa.
-- O HUD no canto mostra a coordenada de tile atual.
+- **Moedas de ouro** giram pelo mapa — encoste nelas para coletar. São 40 espalhadas.
+- O HUD mostra a carteira de moedas, quantas faltam no mapa e a coordenada atual.
+- **Tela de título**: "Novo Jogo" zera o progresso, "Continuar" retoma de onde parou.
+- Botão voltar do Android retorna à tela de título (o progresso fica salvo).
 
 ---
 
@@ -51,13 +55,20 @@ app/src/main/
 │   ├── hero.png                 spritesheet 4x4 (64px) — baixo/cima/esq/dir
 │   ├── tiles.png                tileset 12 tiles de 32px
 │   ├── dpad.png                 botão direcional
+│   ├── coin.png                 moeda animada (6 frames de rotação)
+│   ├── coin_hud.png             ícone da moeda para o HUD
+│   ├── title_bg.png             fundo da tela de título
 │   └── map.txt                  mapa 60x44 em texto
 ├── java/com/elber/jojoquest/
 │   ├── MainActivity.java        tela cheia imersiva (WindowInsetsController)
 │   ├── GameView.java            SurfaceView + game loop + render
 │   ├── GameMap.java             grid de tiles e colisão
 │   ├── Player.java              movimento, animação, colisão por eixo
-│   └── Dpad.java                D-pad multitouch com 8 setores
+│   ├── Dpad.java                D-pad multitouch com 8 setores
+│   ├── Dex.java                 catálogo + carteira de moedas (persistido)
+│   ├── Coin.java                moeda coletável do mapa
+│   ├── TitleScreen.java         tela inicial
+│   └── FloatingText.java        efeito "+1" ao coletar
 └── res/
     ├── mipmap-*/                ícone do launcher (legacy + adaptativo)
     └── values/                  strings, cores, tema
@@ -68,6 +79,8 @@ tools/
 ├── make_tiles.py                gera o tileset
 ├── make_map.py                  gera o mapa
 ├── make_ui.py                   processa o D-pad
+├── make_coin.py                 gera a moeda animada
+├── make_title.py                prepara o fundo do título
 ├── make_icon.py                 gera os mipmaps do ícone
 └── zipalign.py                  zipalign 4 bytes em Python
 
@@ -94,6 +107,31 @@ preview/                         versão web jogável (mesmos assets)
 | `D` | porta | não |
 
 Editou o mapa? É só rodar `bash tools/build_apk.sh` de novo.
+
+---
+
+## O Dex
+
+`Dex.java` é o catálogo do jogo e, ao mesmo tempo, a carteira do jogador.
+Tudo é persistido em `SharedPreferences`, então o progresso sobrevive a fechar o app.
+
+**Carteira:** `coins()`, `addCoins(n)`, `spendCoins(n)`, `canAfford(n)`,
+`totalEarned()`, `totalSpent()`.
+
+**Catálogo:** 8 entradas, sendo 4 descobríveis e 4 compráveis com moedas.
+
+| Entrada | Preço | Efeito |
+|---|---|---|
+| Jotaro, Moeda, A Vila, O Lago | — | só descoberta |
+| Botas Velozes | 25 | +40% de velocidade *(já ativo no jogo)* |
+| Lanterna | 40 | reservado |
+| Amuleto Dourado | 80 | moedas valem o dobro *(já ativo)* |
+| Boné Extra | 120 | cosmético |
+
+`buy(id)` retorna `OK`, `ALREADY_OWNED`, `NOT_ENOUGH_COINS` ou `UNKNOWN_ENTRY`.
+Um `Dex.Listener` avisa a HUD sempre que o saldo muda (é o que dispara o brilho
+no contador). As moedas já pegas ficam marcadas por id (`markPicked`), então não
+reaparecem ao reabrir o jogo — e `resetPickups()` devolve todas ao mapa.
 
 ---
 

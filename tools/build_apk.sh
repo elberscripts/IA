@@ -29,6 +29,8 @@ python3 tools/make_sprites.py  >/dev/null
 python3 tools/make_tiles.py    >/dev/null
 python3 tools/make_map.py      >/dev/null
 python3 tools/make_ui.py       >/dev/null
+python3 tools/make_coin.py     >/dev/null
+python3 tools/make_title.py    >/dev/null
 python3 tools/make_icon.py     >/dev/null
 
 echo ">> aapt2 compile (recursos)"
