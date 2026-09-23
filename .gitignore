@@ -19,3 +19,5 @@ __pycache__/
 *.pyc
 .DS_Store
 build/*.idsig
+preview/JoJoQuest-release.apk
+preview/icon.png
